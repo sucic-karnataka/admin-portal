@@ -8,7 +8,7 @@ import { Copy, Trash2, Upload, Image as ImageIcon, FileVideo, File } from 'lucid
 
 function FilePreview({ obj }) {
   const ext = obj.key.split('.').pop()?.toLowerCase();
-  const isImage = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'avif', 'svg'].includes(ext);
+  const isImage = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'avif'].includes(ext);
   const isVideo = ['mp4', 'webm'].includes(ext);
 
   if (isImage) {

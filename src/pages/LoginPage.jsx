@@ -65,6 +65,12 @@ export default function LoginPage() {
         return;
       }
 
+      if (!ghToken || typeof ghToken !== 'string') {
+        setError('No token received from GitHub.');
+        setLoading(false);
+        return;
+      }
+
       await verifyAndLogin(ghToken);
     }
 
@@ -73,33 +79,29 @@ export default function LoginPage() {
 
   async function verifyAndLogin(ghToken) {
     try {
-      // Verify the token belongs to an admin
-      const res = await fetch(`${ADMIN_WORKER_URL}/admin/members`, {
-        headers: { Authorization: `token ${ghToken}` },
-      });
-      if (res.status === 401) {
+      // Fetch admin list — 401 means not an admin, non-OK means worker error
+      const [adminsRes, userRes] = await Promise.all([
+        fetch(`${ADMIN_WORKER_URL}/admin/admins`, {
+          headers: { Authorization: `token ${ghToken}` },
+        }),
+        fetch('https://api.github.com/user', {
+          headers: { Authorization: `token ${ghToken}`, 'User-Agent': 'admin-portal' },
+        }),
+      ]);
+
+      if (adminsRes.status === 401) {
         setError('GitHub account is not authorised as an admin.');
         setLoading(false);
         return;
       }
-      if (!res.ok) {
-        setError(`Worker error: ${res.status}`);
+      if (!adminsRes.ok) {
+        setError(`Worker error: ${adminsRes.status}`);
         setLoading(false);
         return;
       }
 
-      // Fetch GitHub user info and admin list in parallel
-      const [userRes, adminsRes] = await Promise.all([
-        fetch('https://api.github.com/user', {
-          headers: { Authorization: `token ${ghToken}`, 'User-Agent': 'admin-portal' },
-        }),
-        fetch(`${ADMIN_WORKER_URL}/admin/admins`, {
-          headers: { Authorization: `token ${ghToken}` },
-        }),
-      ]);
-
-      const userInfo = userRes.ok ? await userRes.json() : {};
       const admins   = adminsRes.ok ? await adminsRes.json() : [];
+      const userInfo = userRes.ok  ? await userRes.json()   : {};
 
       const myEntry = Array.isArray(admins)
         ? admins.find(a => a.github_login.toLowerCase() === (userInfo.login || '').toLowerCase())
@@ -108,7 +110,7 @@ export default function LoginPage() {
       login(ghToken, {
         login:   userInfo.login,
         avatar:  userInfo.avatar_url,
-        role:    myEntry?.role    || 'moderator',
+        role:    myEntry?.role    || null,
         section: myEntry?.section || null,
       });
     } catch (e) {
