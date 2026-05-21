@@ -66,7 +66,7 @@ export async function uploadMedia(token, file, onProgress) {
 }
 
 export async function deleteMedia(token, key) {
-  const res = await fetch(`${MEDIA_WORKER_URL}/media/${encodeURIComponent(key)}`, {
+  const res = await fetch(`${MEDIA_WORKER_URL}/media?key=${encodeURIComponent(key)}`, {
     method: 'DELETE',
     headers: authHeaders(token),
   });
