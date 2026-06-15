@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useAuth } from '../lib/auth';
 import { getMedia, uploadMedia, deleteMedia } from '../lib/api';
 import { Button } from '@/components/ui/button';
@@ -46,8 +46,29 @@ function formatDate(dateVal) {
 }
 
 function monthLabel(yyyymm) {
+  if (yyyymm === 'Unknown') return 'Unknown date';
   const [y, m] = yyyymm.split('/');
   return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString('en-IN', { year: 'numeric', month: 'long' });
+}
+
+function uploadTime(obj) {
+  const time = obj.uploaded ? new Date(obj.uploaded).getTime() : 0;
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function monthKeyFor(obj) {
+  if (obj.uploaded) {
+    const d = new Date(obj.uploaded);
+    if (!Number.isNaN(d.getTime())) {
+      return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+    }
+  }
+  const fallback = obj.key.split('/').slice(0, 2).join('/');
+  return /^\d{4}\/\d{2}$/.test(fallback) ? fallback : 'Unknown';
+}
+
+function userFilterValue(uploadedBy) {
+  return uploadedBy ? String(uploadedBy).trim().toLowerCase() : '__unknown__';
 }
 
 export default function MediaPage() {
@@ -59,10 +80,54 @@ export default function MediaPage() {
   const [deleteTarget, setDeleteTarget]     = useState(null); // obj to confirm deletion
   const [deleting, setDeleting]     = useState(false);
   const [dragging, setDragging]     = useState(false);
-  const [selectedMonth, setSelectedMonth] = useState('');
+  const [monthPageIndex, setMonthPageIndex] = useState(0);
+  const [selectedUser, setSelectedUser] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const fileInputRef                = useRef(null);
 
   const canDelete = ['owner', 'moderator'].includes(user?.role);
+
+  const sortedMedia = useMemo(
+    () => [...media].sort((a, b) => uploadTime(b) - uploadTime(a) || b.key.localeCompare(a.key)),
+    [media]
+  );
+
+  const userOptions = useMemo(() => {
+    const options = new Map();
+    for (const obj of sortedMedia) {
+      const value = userFilterValue(obj.uploadedBy);
+      const label = obj.uploadedBy || 'Unknown user';
+      if (!options.has(value)) options.set(value, label);
+    }
+    return [...options.entries()].map(([value, label]) => ({ value, label }));
+  }, [sortedMedia]);
+
+  const filteredMedia = useMemo(() => {
+    const start = startDate ? new Date(`${startDate}T00:00:00`).getTime() : null;
+    const end = endDate ? new Date(`${endDate}T23:59:59.999`).getTime() : null;
+
+    return sortedMedia.filter(obj => {
+      if (selectedUser !== 'all' && userFilterValue(obj.uploadedBy) !== selectedUser) return false;
+
+      const time = uploadTime(obj);
+      if (start !== null && time < start) return false;
+      if (end !== null && time > end) return false;
+
+      return true;
+    });
+  }, [sortedMedia, selectedUser, startDate, endDate]);
+
+  const monthKeys = useMemo(
+    () => [...new Set(filteredMedia.map(monthKeyFor))].sort().reverse(),
+    [filteredMedia]
+  );
+
+  const currentMonthKey = monthKeys[Math.min(monthPageIndex, Math.max(monthKeys.length - 1, 0))] || '';
+  const currentMonthMedia = currentMonthKey
+    ? filteredMedia.filter(obj => monthKeyFor(obj) === currentMonthKey)
+    : [];
+  const hasFilters = selectedUser !== 'all' || startDate || endDate;
 
   const load = useCallback(async () => {
     try {
@@ -77,6 +142,16 @@ export default function MediaPage() {
   }, [token]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    setMonthPageIndex(0);
+  }, [selectedUser, startDate, endDate]);
+
+  useEffect(() => {
+    if (monthPageIndex > 0 && monthPageIndex >= monthKeys.length) {
+      setMonthPageIndex(Math.max(monthKeys.length - 1, 0));
+    }
+  }, [monthPageIndex, monthKeys.length]);
 
   async function uploadFile(file) {
     if (file.size > MAX_FILE_SIZE) {
@@ -211,49 +286,97 @@ export default function MediaPage() {
         )}
       </div>
 
-      {/* Month filter */}
-      {!loading && media.length > 0 && (() => {
-        const months = [...new Set(media.map(o => o.key.split('/').slice(0, 2).join('/')))].sort().reverse();
-        return months.length > 1 ? (
-          <div className="flex flex-wrap gap-2 items-center">
-            <span className="text-xs text-muted-foreground">Filter by month:</span>
-            <button
-              onClick={() => setSelectedMonth('')}
-              className={`text-xs px-3 py-1 rounded-full border transition-colors ${
-                selectedMonth === '' ? 'bg-primary text-primary-foreground border-primary' : 'border-muted-foreground/30 hover:border-muted-foreground/60'
-              }`}
-            >
-              All
-            </button>
-            {months.map(m => (
-              <button
-                key={m}
-                onClick={() => setSelectedMonth(m)}
-                className={`text-xs px-3 py-1 rounded-full border transition-colors ${
-                  selectedMonth === m ? 'bg-primary text-primary-foreground border-primary' : 'border-muted-foreground/30 hover:border-muted-foreground/60'
-                }`}
+      {!loading && media.length > 0 && (
+        <div className="bg-white border rounded-lg p-3 space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[minmax(160px,1fr)_160px_160px_auto] gap-3 items-end">
+            <label className="space-y-1">
+              <span className="text-xs font-medium text-muted-foreground">User</span>
+              <select
+                value={selectedUser}
+                onChange={e => setSelectedUser(e.target.value)}
+                className="h-9 w-full rounded-md border bg-background px-3 text-sm"
               >
-                {monthLabel(m)}
-              </button>
-            ))}
+                <option value="all">All users</option>
+                {userOptions.map(option => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-medium text-muted-foreground">From</span>
+              <input
+                type="date"
+                value={startDate}
+                onChange={e => setStartDate(e.target.value)}
+                className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-medium text-muted-foreground">To</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={e => setEndDate(e.target.value)}
+                className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+              />
+            </label>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!hasFilters}
+              onClick={() => {
+                setSelectedUser('all');
+                setStartDate('');
+                setEndDate('');
+              }}
+            >
+              Clear filters
+            </Button>
           </div>
-        ) : null;
-      })()}
+
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
+            <div>
+              <p className="text-sm font-medium">
+                {currentMonthKey ? monthLabel(currentMonthKey) : 'No matching media'}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {currentMonthMedia.length} of {filteredMedia.length} files
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={monthPageIndex >= monthKeys.length - 1}
+                onClick={() => setMonthPageIndex(i => Math.min(i + 1, monthKeys.length - 1))}
+              >
+                Previous month
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={monthPageIndex <= 0}
+                onClick={() => setMonthPageIndex(i => Math.max(i - 1, 0))}
+              >
+                Next month
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Grid */}
       {loading ? (
         <p className="text-center py-16 text-muted-foreground">Loading…</p>
       ) : !media.length ? (
         <p className="text-center py-16 text-muted-foreground">No files yet. Upload one above.</p>
-      ) : (() => {
-        const filtered = selectedMonth
-          ? media.filter(o => o.key.startsWith(selectedMonth + '/'))
-          : media;
-        return filtered.length === 0 ? (
-          <p className="text-center py-8 text-muted-foreground">No files for this month.</p>
-        ) : (
+      ) : !filteredMedia.length ? (
+        <p className="text-center py-8 text-muted-foreground">No files match these filters.</p>
+      ) : !currentMonthMedia.length ? (
+        <p className="text-center py-8 text-muted-foreground">No files for this month.</p>
+      ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-          {filtered.map(obj => (
+          {currentMonthMedia.map(obj => (
             <div
               key={obj.key}
               className="bg-white border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col"
@@ -270,6 +393,9 @@ export default function MediaPage() {
                 {obj.uploaded && (
                   <p className="text-xs text-muted-foreground/70">{formatDate(obj.uploaded)}</p>
                 )}
+                <p className="text-xs text-muted-foreground/70 truncate" title={obj.uploadedBy || 'Unknown user'}>
+                  {obj.uploadedBy || 'Unknown user'}
+                </p>
                 <div className="flex gap-1 mt-auto">
                   <Button
                     size="sm"
@@ -297,8 +423,7 @@ export default function MediaPage() {
             </div>
           ))}
         </div>
-        );
-      })()}
+      )}
 
       {/* Delete confirmation dialog */}
       <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
