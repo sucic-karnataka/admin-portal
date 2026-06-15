@@ -228,13 +228,13 @@ export default function MediaPage() {
   }
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="space-y-4 p-3 sm:p-4 lg:p-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-xl font-semibold">Media</h1>
         {/* intentional blank — filter below */}
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={load}>↻ Refresh</Button>
+        <div className="grid grid-cols-2 gap-2 sm:flex">
+          <Button variant="outline" size="sm" onClick={load}>Refresh</Button>
           <Button
             size="sm"
             onClick={() => fileInputRef.current?.click()}
@@ -260,7 +260,7 @@ export default function MediaPage() {
         onDragLeave={onDragLeave}
         onDrop={onDrop}
         onClick={() => !uploading && fileInputRef.current?.click()}
-        className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors select-none ${
+        className={`cursor-pointer select-none rounded-lg border-2 border-dashed p-5 text-center transition-colors sm:p-8 ${
           dragging
             ? 'border-primary bg-primary/5 text-primary'
             : 'border-muted-foreground/30 text-muted-foreground hover:border-muted-foreground/60'
@@ -288,7 +288,7 @@ export default function MediaPage() {
 
       {!loading && media.length > 0 && (
         <div className="bg-white border rounded-lg p-3 space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[minmax(160px,1fr)_160px_160px_auto] gap-3 items-end">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(160px,1fr)_160px_160px_auto] lg:items-end">
             <label className="space-y-1">
               <span className="text-xs font-medium text-muted-foreground">User</span>
               <select
@@ -323,6 +323,7 @@ export default function MediaPage() {
             <Button
               variant="outline"
               size="sm"
+              className="w-full lg:w-auto"
               disabled={!hasFilters}
               onClick={() => {
                 setSelectedUser('all');
@@ -334,7 +335,7 @@ export default function MediaPage() {
             </Button>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
+          <div className="flex flex-col gap-3 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-medium">
                 {currentMonthKey ? monthLabel(currentMonthKey) : 'No matching media'}
@@ -343,7 +344,7 @@ export default function MediaPage() {
                 {currentMonthMedia.length} of {filteredMedia.length} files
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
               <Button
                 variant="outline"
                 size="sm"
@@ -375,7 +376,7 @@ export default function MediaPage() {
       ) : !currentMonthMedia.length ? (
         <p className="text-center py-8 text-muted-foreground">No files for this month.</p>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+        <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 xl:gap-4">
           {currentMonthMedia.map(obj => (
             <div
               key={obj.key}

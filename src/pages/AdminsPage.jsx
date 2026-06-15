@@ -75,16 +75,16 @@ export default function AdminsPage() {
   }
 
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 p-3 sm:p-4 lg:p-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-xl font-semibold">Admins</h1>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={load}>↻ Refresh</Button>
-          <Button size="sm" onClick={() => setOpen(true)}>+ Add Admin</Button>
+        <div className="grid grid-cols-2 gap-2 sm:flex">
+          <Button variant="outline" size="sm" onClick={load}>Refresh</Button>
+          <Button size="sm" onClick={() => setOpen(true)}>Add Admin</Button>
         </div>
       </div>
 
-      <div className="bg-white rounded-lg border">
+      <div className="hidden rounded-lg border bg-white md:block">
         <Table>
           <TableHeader>
             <TableRow>
@@ -125,6 +125,56 @@ export default function AdminsPage() {
             ))}
           </TableBody>
         </Table>
+      </div>
+
+      <div className="space-y-3 md:hidden">
+        {loading && (
+          <p className="rounded-lg border bg-white py-10 text-center text-sm text-muted-foreground">Loading...</p>
+        )}
+        {!loading && !admins.length && (
+          <p className="rounded-lg border bg-white py-10 text-center text-sm text-muted-foreground">No admins found.</p>
+        )}
+        {admins.map(a => (
+          <div key={a.id} className="space-y-3 rounded-lg border bg-white p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <a
+                  href={`https://github.com/${a.github_login}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block truncate text-sm font-medium hover:underline"
+                >
+                  @{a.github_login}
+                </a>
+                {a.github_login === user?.login && (
+                  <span className="text-xs text-muted-foreground">(you)</span>
+                )}
+              </div>
+              <Badge variant={roleBadgeVariant(a.role)} className="shrink-0 capitalize">
+                {a.role.replace('_', ' ')}
+              </Badge>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div>
+                <p className="text-muted-foreground">Section</p>
+                <p className="truncate font-medium">{a.section || '-'}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Added</p>
+                <p className="font-medium">{fmtDate(a.added_at)}</p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy[a.id] || a.github_login === user?.login}
+              className="w-full border-red-200 text-red-600 hover:bg-red-50"
+              onClick={() => handleRemove(a)}
+            >
+              Remove
+            </Button>
+          </div>
+        ))}
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
