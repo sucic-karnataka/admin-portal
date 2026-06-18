@@ -35,8 +35,20 @@ export async function removeAdmin(token, id) {
 
 // ── Media ──────────────────────────────────────────────────────────────────
 export async function getMedia(token) {
-  const res = await fetch(`${MEDIA_WORKER_URL}/media`, { headers: authHeaders(token) });
-  return handleResponse(res);
+  const objects = [];
+  let cursor = null;
+
+  do {
+    const url = new URL(`${MEDIA_WORKER_URL}/media`);
+    if (cursor) url.searchParams.set('cursor', cursor);
+
+    const res = await fetch(url, { headers: authHeaders(token) });
+    const data = await handleResponse(res);
+    objects.push(...(data.objects || []));
+    cursor = data.truncated ? data.cursor : null;
+  } while (cursor);
+
+  return { objects };
 }
 
 export async function uploadMedia(token, file, onProgress) {

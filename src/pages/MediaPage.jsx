@@ -38,6 +38,7 @@ function FilePreview({ obj }) {
 // image/svg+xml excluded — SVGs can embed <script> tags and execute JS when opened directly
 const ALLOWED_TYPES = 'image/jpeg,image/png,image/webp,image/gif,image/avif,video/mp4,video/webm,application/pdf';
 const MAX_FILE_SIZE = 1 * 1024 * 1024; // 1 MB
+const PAGE_SIZE = 20;
 
 function formatDate(dateVal) {
   if (!dateVal) return '';
@@ -45,26 +46,9 @@ function formatDate(dateVal) {
   return d.toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
-function monthLabel(yyyymm) {
-  if (yyyymm === 'Unknown') return 'Unknown date';
-  const [y, m] = yyyymm.split('/');
-  return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString('en-IN', { year: 'numeric', month: 'long' });
-}
-
 function uploadTime(obj) {
   const time = obj.uploaded ? new Date(obj.uploaded).getTime() : 0;
   return Number.isNaN(time) ? 0 : time;
-}
-
-function monthKeyFor(obj) {
-  if (obj.uploaded) {
-    const d = new Date(obj.uploaded);
-    if (!Number.isNaN(d.getTime())) {
-      return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}`;
-    }
-  }
-  const fallback = obj.key.split('/').slice(0, 2).join('/');
-  return /^\d{4}\/\d{2}$/.test(fallback) ? fallback : 'Unknown';
 }
 
 function userFilterValue(uploadedBy) {
@@ -80,7 +64,7 @@ export default function MediaPage() {
   const [deleteTarget, setDeleteTarget]     = useState(null); // obj to confirm deletion
   const [deleting, setDeleting]     = useState(false);
   const [dragging, setDragging]     = useState(false);
-  const [monthPageIndex, setMonthPageIndex] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
   const [selectedUser, setSelectedUser] = useState('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -118,15 +102,11 @@ export default function MediaPage() {
     });
   }, [sortedMedia, selectedUser, startDate, endDate]);
 
-  const monthKeys = useMemo(
-    () => [...new Set(filteredMedia.map(monthKeyFor))].sort().reverse(),
-    [filteredMedia]
-  );
-
-  const currentMonthKey = monthKeys[Math.min(monthPageIndex, Math.max(monthKeys.length - 1, 0))] || '';
-  const currentMonthMedia = currentMonthKey
-    ? filteredMedia.filter(obj => monthKeyFor(obj) === currentMonthKey)
-    : [];
+  const totalPages = Math.max(1, Math.ceil(filteredMedia.length / PAGE_SIZE));
+  const pagedMedia = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return filteredMedia.slice(start, start + PAGE_SIZE);
+  }, [filteredMedia, currentPage]);
   const hasFilters = selectedUser !== 'all' || startDate || endDate;
 
   const load = useCallback(async () => {
@@ -144,14 +124,14 @@ export default function MediaPage() {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    setMonthPageIndex(0);
+    setCurrentPage(1);
   }, [selectedUser, startDate, endDate]);
 
   useEffect(() => {
-    if (monthPageIndex > 0 && monthPageIndex >= monthKeys.length) {
-      setMonthPageIndex(Math.max(monthKeys.length - 1, 0));
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
     }
-  }, [monthPageIndex, monthKeys.length]);
+  }, [currentPage, totalPages]);
 
   async function uploadFile(file) {
     if (file.size > MAX_FILE_SIZE) {
@@ -337,30 +317,12 @@ export default function MediaPage() {
 
           <div className="flex flex-col gap-3 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-sm font-medium">
-                {currentMonthKey ? monthLabel(currentMonthKey) : 'No matching media'}
-              </p>
+              <p className="text-sm font-medium">Latest media</p>
               <p className="text-xs text-muted-foreground">
-                {currentMonthMedia.length} of {filteredMedia.length} files
+                {filteredMedia.length
+                  ? `Showing ${(currentPage - 1) * PAGE_SIZE + 1}–${Math.min(currentPage * PAGE_SIZE, filteredMedia.length)} of ${filteredMedia.length} files`
+                  : 'No matching media'}
               </p>
-            </div>
-            <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={monthPageIndex >= monthKeys.length - 1}
-                onClick={() => setMonthPageIndex(i => Math.min(i + 1, monthKeys.length - 1))}
-              >
-                Previous month
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={monthPageIndex <= 0}
-                onClick={() => setMonthPageIndex(i => Math.max(i - 1, 0))}
-              >
-                Next month
-              </Button>
             </div>
           </div>
         </div>
@@ -373,57 +335,90 @@ export default function MediaPage() {
         <p className="text-center py-16 text-muted-foreground">No files yet. Upload one above.</p>
       ) : !filteredMedia.length ? (
         <p className="text-center py-8 text-muted-foreground">No files match these filters.</p>
-      ) : !currentMonthMedia.length ? (
-        <p className="text-center py-8 text-muted-foreground">No files for this month.</p>
       ) : (
-        <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 xl:gap-4">
-          {currentMonthMedia.map(obj => (
-            <div
-              key={obj.key}
-              className="bg-white border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col"
-            >
-              <FilePreview obj={obj} />
-              <div className="p-2 flex-1 flex flex-col gap-1.5">
-                <p
-                  className="text-xs font-medium text-gray-700 truncate"
-                  title={obj.key}
-                >
-                  {obj.key.split('/').pop()}
-                </p>
-                <p className="text-xs text-muted-foreground">{obj.sizeFormatted}</p>
-                {obj.uploaded && (
-                  <p className="text-xs text-muted-foreground/70">{formatDate(obj.uploaded)}</p>
-                )}
-                <p className="text-xs text-muted-foreground/70 truncate" title={obj.uploadedBy || 'Unknown user'}>
-                  {obj.uploadedBy || 'Unknown user'}
-                </p>
-                <div className="flex gap-1 mt-auto">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="flex-1 h-7 text-xs px-2"
-                    onClick={() => copyUrl(obj.publicUrl)}
-                    title="Copy URL"
+        <>
+          <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 xl:gap-4">
+            {pagedMedia.map(obj => (
+              <div
+                key={obj.key}
+                className="bg-white border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col"
+              >
+                <FilePreview obj={obj} />
+                <div className="p-2 flex-1 flex flex-col gap-1.5">
+                  <p
+                    className="text-xs font-medium text-gray-700 truncate"
+                    title={obj.key}
                   >
-                    <Copy size={11} className="mr-1" />
-                    Copy URL
-                  </Button>
-                  {canDelete && (
+                    {obj.key.split('/').pop()}
+                  </p>
+                  <p className="text-xs text-muted-foreground">{obj.sizeFormatted}</p>
+                  {obj.uploaded && (
+                    <p className="text-xs text-muted-foreground/70">{formatDate(obj.uploaded)}</p>
+                  )}
+                  <p className="text-xs text-muted-foreground/70 truncate" title={obj.uploadedBy || 'Unknown user'}>
+                    {obj.uploadedBy || 'Unknown user'}
+                  </p>
+                  <div className="flex gap-1 mt-auto">
                     <Button
                       size="sm"
                       variant="outline"
-                      className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10"
-                      onClick={() => setDeleteTarget(obj)}
-                      title="Delete"
+                      className="flex-1 h-7 text-xs px-2"
+                      onClick={() => copyUrl(obj.publicUrl)}
+                      title="Copy URL"
                     >
-                      <Trash2 size={12} />
+                      <Copy size={11} className="mr-1" />
+                      Copy URL
                     </Button>
-                  )}
+                    {canDelete && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10"
+                        onClick={() => setDeleteTarget(obj)}
+                        title="Delete"
+                      >
+                        <Trash2 size={12} />
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+
+          {totalPages > 1 && (
+            <nav className="flex flex-wrap items-center justify-center gap-1 pt-2" aria-label="Media pages">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage(page => page - 1)}
+              >
+                Previous
+              </Button>
+              {Array.from({ length: totalPages }, (_, index) => index + 1).map(page => (
+                <Button
+                  key={page}
+                  variant={page === currentPage ? 'default' : 'outline'}
+                  size="sm"
+                  className="min-w-9"
+                  onClick={() => setCurrentPage(page)}
+                  aria-current={page === currentPage ? 'page' : undefined}
+                >
+                  {page}
+                </Button>
+              ))}
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage(page => page + 1)}
+              >
+                Next
+              </Button>
+            </nav>
+          )}
+        </>
       )}
 
       {/* Delete confirmation dialog */}
